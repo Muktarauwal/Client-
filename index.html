@@ -1,0 +1,1739 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>REG FLOW</title>
+<link rel="preload" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"></noscript>
+<!--
+  Chart.js and Paystack are NOT loaded here anymore — they're only needed
+  by the Admin Analytics tab and the "Pay" button respectively, and were
+  previously forcing every single visitor to download ~250KB before the
+  app could even show a loading message. They're now lazy-loaded on
+  first actual use (see loadScriptOnce()).
+-->
+<script defer src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<style>
+:root {
+    --dark-blue: #092e42;
+    --light-blue: #00bcd4;
+    --bg-gray: #f4f7f6;
+    --white: #ffffff;
+    --shadow: 0 4px 6px rgba(0,0,0,0.1);
+    --whatsapp-green: #25d366;
+    --auth-dark-blue: #061e3d;
+    --auth-mid-blue: #155e75;
+    --auth-teal: #06b6d4;
+    --status-pending: #f97316;
+    --status-processing: #2563eb;
+    --status-completed: #16a34a;
+    --status-failed: #dc2626;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Roboto, sans-serif; }
+body { background-color: var(--bg-gray); color: #333; padding-bottom: 100px; }
+
+/* view routing */
+.view { display: none; }
+.view.active { display: block; }
+.subview { display: none; }
+.subview.active { display: block; }
+
+/* --- Header --- */
+header {
+    background-color: var(--white); padding: 12px 20px;
+    display: flex; justify-content: space-between; align-items: center;
+    box-shadow: var(--shadow); position: sticky; top: 0; z-index: 1000;
+}
+.logo-area { display: flex; align-items: center; gap: 10px; }
+.hex-logo {
+    width: 38px; height: 42px; background-color: var(--dark-blue);
+    clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+    display: flex; justify-content: center; align-items: center;
+    color: var(--light-blue); font-weight: bold; font-size: 18px;
+}
+.brand-name { font-weight: 800; font-size: 1.3rem; letter-spacing: -0.5px; }
+.brand-name span { color: var(--dark-blue); }
+.brand-name span.alt { color: var(--light-blue); }
+
+/* --- Dashboard --- */
+.dashboard { max-width: 1100px; margin: 20px auto; padding: 0 15px; }
+.wallet-card {
+    background: linear-gradient(135deg, var(--dark-blue), #164a66);
+    color: white; padding: 25px; border-radius: 15px;
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 30px; box-shadow: 0 10px 20px rgba(9, 46, 66, 0.2);
+    user-select: none; -webkit-user-select: none;
+}
+.wallet-info h2 { font-size: 2rem; margin: 5px 0; }
+.btn-fund { background: var(--light-blue); color: white; border: none; padding: 12px 25px; border-radius: 8px; font-weight: bold; cursor: pointer; }
+.section-title {
+    margin: 30px 0 15px; font-size: 1rem; color: var(--dark-blue);
+    text-transform: uppercase; letter-spacing: 1px; display: flex; align-items: center; gap: 8px;
+}
+.section-title::after { content: ""; flex: 1; height: 1px; background: #ddd; }
+.services-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; }
+@media (min-width: 768px) { .services-grid { grid-template-columns: repeat(4, 1fr); } }
+.service-item { background: var(--white); padding: 20px 10px; border-radius: 12px; text-align: center; border: 1px solid #eee; cursor: pointer; transition: 0.3s; }
+.service-item:hover { border-color: var(--light-blue); transform: translateY(-5px); box-shadow: 0 8px 15px rgba(0,0,0,0.05); }
+.service-icon { width: 50px; height: 50px; background-color: #f0fdff; border-radius: 12px; display: flex; justify-content: center; align-items: center; margin: 0 auto 12px; color: var(--light-blue); font-size: 1.5rem; }
+.service-item p { font-size: 0.85rem; font-weight: 700; color: #444; }
+.support-float { position: fixed; bottom: 30px; right: 30px; display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
+.wa-btn { background: var(--whatsapp-green); color: white; width: 60px; height: 60px; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 32px; box-shadow: 0 5px 15px rgba(37, 211, 102, 0.4); text-decoration: none; }
+
+/* --- Auth screen --- */
+.header-logo { padding: 30px 0; text-align: center; width: 100%; }
+.shield-wrapper {
+    position: relative; width: 70px; height: 80px; margin: 0 auto;
+    background: linear-gradient(145deg, var(--auth-dark-blue), var(--auth-mid-blue));
+    clip-path: polygon(50% 0%, 100% 15%, 100% 70%, 50% 100%, 0% 70%, 0% 15%);
+    display: flex; align-items: center; justify-content: center;
+}
+.shield-wrapper::before { content: "R"; color: var(--auth-teal); font-size: 40px; font-weight: 900; font-style: italic; transform: skewX(-5deg); }
+.brand-text { font-size: 2.5rem; font-weight: 800; text-transform: uppercase; margin: 10px 0 0; letter-spacing: -1px; color: var(--auth-dark-blue); }
+.brand-text span { color: var(--auth-teal); }
+.tagline { font-size: 0.75rem; font-weight: 700; letter-spacing: 3px; opacity: 0.8; border-top: 1px solid #ddd; display: inline-block; padding-top: 5px; color: var(--auth-dark-blue); }
+.auth-container { background: var(--white); width: 90%; max-width: 480px; padding: 30px; border-radius: 16px; box-shadow: 0 10px 25px rgba(0,0,0,0.05); margin: 0 auto 50px; }
+.tabs { display: flex; margin-bottom: 25px; border-bottom: 2px solid #eee; }
+.tab { flex: 1; padding: 12px; text-align: center; cursor: pointer; font-weight: 600; transition: 0.3s; color: #64748b; }
+.tab.active { color: var(--auth-dark-blue); border-bottom: 3px solid var(--auth-teal); }
+form { display: flex; flex-direction: column; gap: 15px; }
+.input-group { display: flex; flex-direction: column; gap: 5px; }
+label { font-size: 0.85rem; font-weight: 600; color: var(--auth-mid-blue); }
+input, select, textarea { padding: 12px; border: 1.5px solid #e2e8f0; border-radius: 8px; font-size: 1rem; outline: none; transition: 0.2s; width: 100%; font-family: inherit; background: var(--white); }
+input:focus, select:focus, textarea:focus { border-color: var(--auth-teal); box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.1); }
+.submit-btn { background: var(--auth-dark-blue); color: white; padding: 14px; border: none; border-radius: 8px; font-size: 1rem; font-weight: 700; cursor: pointer; margin-top: 10px; transition: 0.3s; }
+.submit-btn:hover { background: var(--auth-mid-blue); transform: translateY(-1px); }
+.submit-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+.hidden { display: none !important; }
+.error-text { color: var(--status-failed); font-size: 0.8rem; }
+.help-text { color: #64748b; font-size: 0.75rem; }
+
+/* --- New components --- */
+.icon-btn { cursor: pointer; position: relative; }
+.badge-dot { position: absolute; top: -4px; right: -4px; width: 9px; height: 9px; border-radius: 50%; background: var(--status-failed); border: 2px solid var(--white); }
+.panel-overlay { position: fixed; inset: 0; background: rgba(9,46,66,0.35); z-index: 2000; display: flex; justify-content: flex-end; }
+.panel { background: var(--white); width: 320px; max-width: 88vw; height: 100%; box-shadow: -8px 0 24px rgba(0,0,0,0.12); padding: 20px; overflow-y: auto; }
+.panel h3 { color: var(--dark-blue); margin-bottom: 15px; font-size: 1.1rem; }
+.panel-close { float: right; cursor: pointer; color: #888; }
+.panel-menu-item { display: flex; align-items: center; gap: 12px; padding: 12px 8px; border-radius: 8px; cursor: pointer; color: #333; font-weight: 600; font-size: 0.9rem; }
+.panel-menu-item:hover { background: #f0fdff; }
+.panel-menu-item i { color: var(--light-blue); width: 20px; text-align: center; }
+.notif-item { padding: 12px 8px; border-bottom: 1px solid #f0f0f0; }
+.notif-item.unread { background: #f0fdff; border-radius: 8px; }
+.notif-item .notif-title { font-weight: 700; font-size: 0.85rem; color: var(--dark-blue); }
+.notif-item .notif-msg { font-size: 0.8rem; color: #666; margin-top: 2px; }
+.notif-item .notif-time { font-size: 0.7rem; color: #999; margin-top: 4px; }
+.card { background: var(--white); border-radius: 15px; padding: 20px; box-shadow: var(--shadow); margin-bottom: 20px; border: 1px solid #eee; }
+.card h3 { color: var(--dark-blue); margin-bottom: 10px; font-size: 1.1rem; }
+.req-list-item { display: flex; justify-content: space-between; align-items: center; padding: 14px 10px; border-bottom: 1px solid #f0f0f0; gap: 10px; }
+.req-list-item:last-child { border-bottom: none; }
+.req-list-item .req-name { font-weight: 700; color: var(--dark-blue); font-size: 0.9rem; }
+.req-list-item .req-ref { font-size: 0.75rem; color: #888; }
+.req-list-item .req-amount { font-size: 0.85rem; color: #444; font-weight: 600; }
+.status-badge { display: inline-block; padding: 5px 12px; border-radius: 20px; font-size: 0.72rem; font-weight: 800; color: white; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap; }
+.status-pending { background: var(--status-pending); }
+.status-processing { background: var(--status-processing); }
+.status-completed { background: var(--status-completed); }
+.status-failed { background: var(--status-failed); }
+.tab-row { display: flex; gap: 8px; margin-bottom: 15px; overflow-x: auto; }
+.tab-pill { padding: 8px 16px; border-radius: 20px; background: var(--white); border: 1.5px solid #eee; font-size: 0.8rem; font-weight: 700; color: #666; cursor: pointer; white-space: nowrap; }
+.tab-pill.active { background: var(--dark-blue); color: white; border-color: var(--dark-blue); }
+.fee-box { background: #f0fdff; border: 1.5px dashed var(--light-blue); border-radius: 10px; padding: 15px; display: flex; justify-content: space-between; align-items: center; margin: 15px 0; }
+.fee-box .fee-amount { font-size: 1.4rem; font-weight: 800; color: var(--dark-blue); }
+.req-list ul { list-style: none; }
+.req-list li { padding: 6px 0; font-size: 0.85rem; color: #555; display: flex; gap: 8px; }
+.req-list li i { color: var(--light-blue); margin-top: 3px; }
+.file-drop { border: 2px dashed #ccc; border-radius: 10px; padding: 20px; text-align: center; cursor: pointer; color: #888; font-size: 0.85rem; }
+.file-drop.drag { border-color: var(--light-blue); background: #f0fdff; }
+.file-drop-preview { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.file-chip { background: #f0fdff; border-radius: 6px; padding: 6px 10px; font-size: 0.75rem; display: flex; align-items: center; gap: 6px; color: var(--dark-blue); }
+.file-chip i.remove { color: var(--status-failed); cursor: pointer; }
+.step-indicator { display: flex; gap: 6px; margin-bottom: 20px; }
+.step-dot { flex: 1; height: 5px; border-radius: 3px; background: #eee; }
+.step-dot.active { background: var(--light-blue); }
+.step-dot.done { background: var(--dark-blue); }
+.back-link { display: inline-flex; align-items: center; gap: 6px; color: var(--dark-blue); font-weight: 700; margin-bottom: 15px; cursor: pointer; text-decoration: none; font-size: 0.9rem; }
+.modal-overlay { position: fixed; inset: 0; background: rgba(9,46,66,0.45); z-index: 3000; display: flex; align-items: center; justify-content: center; padding: 20px; }
+.modal-box { background: white; border-radius: 16px; padding: 25px; width: 100%; max-width: 420px; box-shadow: 0 20px 40px rgba(0,0,0,0.2); }
+.toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--dark-blue); color: white; padding: 12px 20px; border-radius: 10px; font-size: 0.85rem; z-index: 4000; box-shadow: var(--shadow); max-width: 90vw; text-align: center; }
+.toast.error { background: var(--status-failed); }
+.toast.success { background: var(--status-completed); }
+.spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.4); border-top-color: white; border-radius: 50%; animation: spin 0.7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.empty-state { text-align: center; padding: 40px 10px; color: #999; }
+.empty-state i { font-size: 2rem; margin-bottom: 10px; display: block; color: #ccc; }
+.stat-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; }
+@media (min-width: 768px) { .stat-grid { grid-template-columns: repeat(4, 1fr); } }
+.stat-card { background: white; border-radius: 12px; padding: 18px; box-shadow: var(--shadow); border: 1px solid #eee; }
+.stat-card .stat-label { font-size: 0.75rem; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+.stat-card .stat-value { font-size: 1.6rem; font-weight: 800; color: var(--dark-blue); margin-top: 6px; }
+.price-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #f0f0f0; gap: 10px; }
+.price-row input { max-width: 140px; }
+</style>
+</head>
+<body>
+<div id="__bootStatus" style="position:fixed;inset:0;background:#f4f7f6;display:flex;align-items:center;justify-content:center;font-family:sans-serif;color:#092e42;z-index:99999;padding:24px;text-align:center;">Loading REG FLOW…</div>
+<script>
+  // Plain inline script, no external src — runs instantly, before any
+  // network resource has to finish, so the "still loading" fallback is
+  // never blocked by a slow connection itself.
+  setTimeout(function () {
+    var box = document.getElementById("__bootStatus");
+    if (box) {
+      box.innerHTML = "Still loading — this usually means a slow connection is still fetching a required script. It will continue automatically once that finishes.<br><br>" +
+        "<button onclick=\"location.reload()\" style=\"padding:10px 20px;border:none;border-radius:8px;background:#00bcd4;color:#fff;font-weight:700;\">Retry</button>";
+    }
+  }, 15000);
+</script>
+
+<!-- ========================= AUTH VIEW ========================= -->
+<div class="view" id="view-auth">
+  <header class="header-logo">
+    <div class="shield-wrapper"></div>
+    <h1 class="brand-text">REG <span>FLOW</span></h1>
+    <div class="tagline">NIN | BVN | CAC | TIN | DATA | AIRTIME </div>
+  </header>
+  <div class="auth-container">
+    <div class="tabs">
+      <div class="tab active" id="loginTab">Login</div>
+      <div class="tab" id="registerTab">Register</div>
+    </div>
+    <form id="loginForm">
+      <div class="input-group"><label>Email Address</label><input type="email" id="loginEmail" placeholder="example@mail.com" required></div>
+      <div class="input-group">
+        <label>Password</label>
+        <input type="password" id="loginPassword" placeholder="••••••••" required>
+        <span class="error-text hidden" id="loginError"></span>
+      </div>
+      <div style="text-align:right; margin-top:-8px;"><a href="#forgot" style="font-size:0.8rem; color:var(--auth-teal); font-weight:600; text-decoration:none;">Forgot password?</a></div>
+      <button type="submit" class="submit-btn" id="loginBtn">Sign In</button>
+    </form>
+
+    <div style="display:flex; align-items:center; gap:10px; margin:18px 0;">
+      <div style="flex:1; height:1px; background:#eee;"></div><small class="help-text">OR</small><div style="flex:1; height:1px; background:#eee;"></div>
+    </div>
+    <button type="button" class="submit-btn" id="googleSignInBtn" style="background:white; color:#333; border:1.5px solid #e2e8f0; display:flex; align-items:center; justify-content:center; gap:10px;">
+      <i class="fab fa-google" style="color:#EA4335;"></i> <span id="googleBtnLabel">Continue with Google</span>
+    </button>
+    <p class="help-text" style="text-align:center; margin-top:8px;">Works for both signing in and creating a new account.</p>
+
+    <form id="registerForm" class="hidden">
+      <div class="input-group"><label>Full Name</label><input type="text" id="regName" placeholder="Firstname Lastname" required></div>
+      <div class="input-group"><label>Phone Number</label><input type="tel" id="regPhone" placeholder="0801 234 5678" required></div>
+      <div class="input-group"><label>Residential Address</label><input type="text" id="regAddress" placeholder="House number, Street name, City" required></div>
+      <div class="input-group"><label>Email Address</label><input type="email" id="regEmail" placeholder="example@mail.com" required></div>
+      <div class="input-group"><label>Password</label><input type="password" id="regPass" placeholder="Create password" required minlength="6"></div>
+      <div class="input-group"><label>Confirm Password</label><input type="password" id="confirmPass" placeholder="Repeat password" required minlength="6"><span class="error-text hidden" id="regError"></span></div>
+      <div class="input-group"><label>Referral Code (optional)</label><input type="text" id="regReferralCode" placeholder="e.g. AB12CD3" style="text-transform:uppercase;"></div>
+      <button type="submit" class="submit-btn" id="regBtn">Create Account</button>
+    </form>
+  </div>
+</div>
+
+<!-- ========================= FORGOT PASSWORD / OTP ========================= -->
+<div class="view" id="view-forgot">
+  <header class="header-logo">
+    <div class="shield-wrapper"></div>
+    <h1 class="brand-text">REG <span>FLOW</span></h1>
+    <div class="tagline">RESET YOUR PASSWORD</div>
+  </header>
+  <div class="auth-container">
+    <a class="back-link" href="#">← Back to Login</a>
+
+    <div id="forgotStepEmail">
+      <p class="help-text" style="margin-bottom:15px;">Enter the email on your account. We'll send a 6-digit code you can use to set a new password.</p>
+      <form id="forgotEmailForm">
+        <div class="input-group"><label>Email Address</label><input type="email" id="forgotEmail" placeholder="example@mail.com" required></div>
+        <span class="error-text hidden" id="forgotEmailError"></span>
+        <button type="submit" class="submit-btn" id="forgotEmailBtn">Send Reset Code</button>
+      </form>
+    </div>
+
+    <div id="forgotStepOtp" class="hidden">
+      <p class="help-text" style="margin-bottom:15px;">Enter the 6-digit code sent to <strong id="forgotEmailDisplay"></strong> and choose a new password.</p>
+      <form id="forgotOtpForm">
+        <div class="input-group"><label>6-Digit Code</label><input type="text" id="forgotOtp" inputmode="numeric" maxlength="6" placeholder="123456" required></div>
+        <div class="input-group"><label>New Password</label><input type="password" id="forgotNewPass" placeholder="New password" required minlength="6"></div>
+        <div class="input-group"><label>Confirm New Password</label><input type="password" id="forgotConfirmPass" placeholder="Repeat new password" required minlength="6"></div>
+        <span class="error-text hidden" id="forgotOtpError"></span>
+        <button type="submit" class="submit-btn" id="forgotOtpBtn">Reset Password</button>
+      </form>
+      <p class="help-text" style="margin-top:12px; text-align:center;"><a href="#" id="resendCodeLink" style="color:var(--auth-teal); font-weight:600; text-decoration:none;">Didn't get a code? Resend</a></p>
+    </div>
+  </div>
+</div>
+
+<!-- ========================= APP SHELL (logged-in) ========================= -->
+<div class="view" id="view-app">
+  <header>
+    <div class="logo-area" id="appLogo" style="cursor:pointer; user-select:none;">
+      <div class="hex-logo">R</div>
+      <div class="brand-name"><span>REG</span><span class="alt">FLOW</span></div>
+    </div>
+    <div class="user-profile">
+      <i class="fas fa-bell fa-lg icon-btn" id="bellIcon" style="color:#666; margin-right:15px;"></i><i class="fas fa-user-circle fa-2x icon-btn" id="profileIcon" style="color:var(--dark-blue);"></i>
+    </div>
+  </header>
+
+  <!-- Dashboard -->
+  <div class="subview active" id="sub-dashboard">
+    <div class="dashboard">
+      <div id="resumeBanner" class="hidden" style="background:#fff7ed; border:1.5px solid var(--status-pending); border-radius:12px; padding:14px 16px; margin-bottom:20px; display:flex; justify-content:space-between; align-items:center; gap:10px;">
+        <div>
+          <strong style="color:var(--dark-blue); font-size:0.9rem;">Unfinished request</strong>
+          <div class="help-text" id="resumeBannerText"></div>
+        </div>
+        <button class="submit-btn" id="resumeBannerBtn" style="margin:0; padding:10px 16px; white-space:nowrap;">Resume</button>
+      </div>
+      <div class="wallet-card" id="walletCard">
+        <div class="wallet-info">
+          <p><i class="fas fa-shield-alt"></i> Secure Agent Wallet</p>
+          <h2 id="walletBalance">₦0.00</h2>
+          <small id="walletId">ID: RF-------</small>
+        </div>
+        <button class="btn-fund" id="topUpBtn"><i class="fas fa-plus-circle"></i> TOP UP</button>
+      </div>
+      <h3 class="section-title">Identity & Business</h3>
+      <div class="services-grid" id="idGrid"></div>
+      <h3 class="section-title">Education & Utilities</h3>
+      <div class="services-grid" id="utilGrid"></div>
+      <h3 class="section-title">Recent Requests</h3>
+      <div class="card"><div class="req-item-list" id="recentRequests"><div class="empty-state"><i class="fas fa-inbox"></i>No requests yet</div></div></div>
+    </div>
+    <div class="support-float">
+      <div style="background:white; padding:5px 12px; border-radius:5px; font-size:12px; font-weight:bold; box-shadow:var(--shadow);">Chat Support</div>
+      <a href="https://wa.me/2347068123412?text=Hello%2C%20I%20need%20help%20with%20my%20REG%20FLOW%20account." class="wa-btn" target="_blank" rel="noopener"><i class="fab fa-whatsapp"></i></a>
+    </div>
+  </div>
+
+  <!-- Service detail -->
+  <div class="subview" id="sub-service">
+    <div class="dashboard" style="max-width:650px;">
+      <a class="back-link" id="serviceBack"><i class="fas fa-arrow-left"></i> Back to Dashboard</a>
+      <div class="card">
+        <div style="display:flex; align-items:center; gap:15px; margin-bottom:10px;">
+          <div class="service-icon" id="svcIcon" style="margin:0;"><i class="fas fa-file"></i></div>
+          <div><h3 id="svcName" style="margin:0;">Loading…</h3><small class="help-text" id="svcProcessingTime"></small></div>
+        </div>
+        <p id="svcDescription" style="color:#555; font-size:0.9rem; margin:10px 0;"></p>
+        <div class="fee-box"><div><small>Service Fee</small><br><span class="fee-amount" id="svcFee">₦0.00</span></div><small>Fixed &amp; non-editable</small></div>
+        <div class="fee-box" style="background:#f7f7f7; border-style:solid; border-color:#eee;"><div><small>Your Wallet Balance</small><br><span class="fee-amount" id="svcWalletBalance" style="font-size:1.1rem;">₦0.00</span></div><small id="svcBalanceNote"></small></div>
+        <div class="req-list"><strong style="font-size:0.85rem; color:var(--dark-blue);">Requirements</strong><ul id="svcRequirements"></ul></div>
+      </div>
+      <div class="card">
+        <div class="step-indicator">
+          <div class="step-dot active" id="dot-1"></div><div class="step-dot" id="dot-2"></div><div class="step-dot" id="dot-3"></div>
+        </div>
+        <div id="step-form">
+          <h3>Step 1 — Your Information</h3>
+          <form id="dynamicForm"></form>
+          <button class="submit-btn" id="toStep2">Continue</button>
+        </div>
+        <div id="step-review" class="hidden">
+          <h3>Step 2 — Review &amp; Submit</h3>
+          <div id="reviewSummary" style="font-size:0.85rem; color:#444; margin:15px 0;"></div>
+          <p class="help-text" style="margin-bottom:10px;">The service fee is deducted from your wallet balance the moment you submit. You'll attach your documents on the next screen — that step is separate so your payment and request are safely saved first.</p>
+          <div style="display:flex; gap:10px;">
+            <button class="submit-btn" style="background:#eee; color:#333;" id="backToStep1">Back</button>
+            <button class="submit-btn" id="submitRequestBtn">Submit Request</button>
+          </div>
+        </div>
+        <div id="step-docs" class="hidden">
+          <h3>Step 3 — Upload Documents</h3>
+          <p class="help-text" style="margin-bottom:10px;" id="docsRequestNote"></p>
+          <div class="file-drop" id="fileDrop"><i class="fas fa-cloud-upload-alt" style="font-size:1.6rem; display:block; margin-bottom:8px;"></i>Tap to select an image<input type="file" id="fileInput" accept="image/*" style="display:none;"></div>
+          <p class="help-text" style="margin-top:6px;">Photos only (JPG, PNG, etc.) — take a picture or choose one from your gallery.</p>
+          <div class="file-drop-preview" id="filePreview"></div>
+          <p class="help-text" style="margin-top:10px;">Each file uploads and saves right away — if your phone's camera app or file picker misbehaves, whatever you've already attached stays saved. Just try that one file again.</p>
+          <div style="display:flex; gap:10px; margin-top:15px;">
+            <button class="submit-btn" id="finishDocsBtn">Done — Go to Dashboard</button>
+          </div>
+        </div>
+        <div id="step-success" class="hidden" style="text-align:center; padding:20px 0;">
+          <i class="fas fa-check-circle" style="font-size:3rem; color:var(--status-completed);"></i>
+          <h3 style="margin-top:15px;">Request Submitted!</h3>
+          <p class="help-text" id="successRef"></p>
+          <button class="submit-btn" id="successBackBtn">Go to Dashboard</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Wallet -->
+  <div class="subview" id="sub-wallet">
+    <div class="dashboard" style="max-width:650px;">
+      <a class="back-link" data-nav="dashboard"><i class="fas fa-arrow-left"></i> Back to Dashboard</a>
+      <div class="wallet-card">
+        <div class="wallet-info"><p><i class="fas fa-shield-alt"></i> Secure Agent Wallet</p><h2 id="walletBalance2">₦0.00</h2><small id="walletId2">ID: RF-------</small></div>
+        <button class="btn-fund" id="topUpBtn2"><i class="fas fa-plus-circle"></i> TOP UP</button>
+      </div>
+      <h3 class="section-title">Wallet Transactions</h3>
+      <div class="card"><div class="req-item-list" id="walletTxns"><div class="empty-state"><i class="fas fa-receipt"></i>No transactions yet</div></div></div>
+    </div>
+  </div>
+
+  <!-- History -->
+  <div class="subview" id="sub-history">
+    <div class="dashboard" style="max-width:700px;">
+      <a class="back-link" data-nav="dashboard"><i class="fas fa-arrow-left"></i> Back to Dashboard</a>
+      <h3 class="section-title">History</h3>
+      <div class="tab-row">
+        <div class="tab-pill active" data-histtab="requests">Requests</div>
+        <div class="tab-pill" data-histtab="services">Services Used</div>
+        <div class="tab-pill" data-histtab="payments">Payments</div>
+      </div>
+      <div class="card"><div id="historyList" class="req-item-list"></div></div>
+    </div>
+  </div>
+
+  <!-- Notifications -->
+  <div class="subview" id="sub-notifications">
+    <div class="dashboard" style="max-width:650px;">
+      <a class="back-link" data-nav="dashboard"><i class="fas fa-arrow-left"></i> Back to Dashboard</a>
+      <h3 class="section-title">Notifications</h3>
+      <div class="card"><div id="notifPageList"></div></div>
+    </div>
+  </div>
+
+  <!-- Profile -->
+  <div class="subview" id="sub-profile">
+    <div class="dashboard" style="max-width:550px;">
+      <a class="back-link" data-nav="dashboard"><i class="fas fa-arrow-left"></i> Back to Dashboard</a>
+      <h3 class="section-title">My Profile</h3>
+      <div class="card">
+        <form id="profileForm">
+          <div class="input-group"><label>Full Name</label><input type="text" id="pFullName" required></div>
+          <div class="input-group"><label>Email Address</label><input type="email" id="pEmail" disabled></div>
+          <div class="input-group"><label>Phone Number</label><input type="tel" id="pPhone" required></div>
+          <div class="input-group"><label>Residential Address</label><input type="text" id="pAddress" required></div>
+          <button type="submit" class="submit-btn" id="saveProfileBtn">Save Changes</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Refer & Earn -->
+  <div class="subview" id="sub-referrals">
+    <div class="dashboard" style="max-width:600px;">
+      <a class="back-link" data-nav="dashboard"><i class="fas fa-arrow-left"></i> Back to Dashboard</a>
+      <h3 class="section-title">Refer &amp; Earn</h3>
+      <div class="card" style="text-align:center;">
+        <p class="help-text" style="margin-bottom:10px;">Share your code — when someone you refer makes their first payment, you get a bonus automatically.</p>
+        <div class="fee-box" style="justify-content:center; gap:20px;">
+          <span class="fee-amount" id="myReferralCode">------</span>
+        </div>
+        <button class="submit-btn" id="copyReferralLinkBtn" style="max-width:280px; margin:15px auto 0;">Copy My Referral Link</button>
+      </div>
+      <h3 class="section-title">People You've Referred</h3>
+      <div class="card"><div class="req-item-list" id="referralsList"></div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ========================= HIDDEN ADMIN LOGIN ========================= -->
+<div class="view" id="view-admin-login">
+  <header class="header-logo">
+    <div class="shield-wrapper"></div>
+    <h1 class="brand-text">REG <span>FLOW</span></h1>
+    <div class="tagline">ADMIN CONTROL PANEL</div>
+  </header>
+  <div class="auth-container">
+    <form id="adminLoginForm">
+      <div class="input-group"><label>Admin Email</label><input type="email" id="adminEmail" required></div>
+      <div class="input-group"><label>Admin Password</label><input type="password" id="adminPassword" required><span class="error-text hidden" id="adminError"></span></div>
+      <button type="submit" class="submit-btn" id="adminLoginBtn">Enter Admin Panel</button>
+    </form>
+  </div>
+</div>
+
+<!-- ========================= HIDDEN ADMIN DASHBOARD ========================= -->
+<div class="view" id="view-admin">
+  <header>
+    <div class="logo-area"><div class="hex-logo">R</div><div class="brand-name"><span>REG</span><span class="alt">FLOW</span> <small style="font-size:0.6rem; color:#888;">ADMIN</small></div></div>
+    <div class="user-profile"><i class="fas fa-sign-out-alt fa-lg icon-btn" id="adminLogout" style="color:#666;" title="Logout"></i></div>
+  </header>
+  <div class="dashboard">
+    <h3 class="section-title">Dashboard Statistics</h3>
+    <div class="stat-grid">
+      <div class="stat-card"><div class="stat-label">Total Users</div><div class="stat-value" id="statUsers">-</div></div>
+      <div class="stat-card"><div class="stat-label">Total Requests</div><div class="stat-value" id="statRequests">-</div></div>
+      <div class="stat-card"><div class="stat-label">Pending</div><div class="stat-value" id="statPending" style="color:var(--status-pending);">-</div></div>
+      <div class="stat-card"><div class="stat-label">Processing</div><div class="stat-value" id="statProcessing" style="color:var(--status-processing);">-</div></div>
+      <div class="stat-card"><div class="stat-label">Completed</div><div class="stat-value" id="statCompleted" style="color:var(--status-completed);">-</div></div>
+      <div class="stat-card"><div class="stat-label">Failed</div><div class="stat-value" id="statFailed" style="color:var(--status-failed);">-</div></div>
+      <div class="stat-card"><div class="stat-label">Total Revenue</div><div class="stat-value" id="statRevenue">-</div></div>
+      <div class="stat-card"><div class="stat-label">Total Wallet Balance</div><div class="stat-value" id="statWallets">-</div></div>
+    </div>
+    <h3 class="section-title">Manage</h3>
+    <div class="tab-row">
+      <div class="tab-pill active" data-panel="requestsPanel">Requests</div>
+      <div class="tab-pill" data-panel="pricingPanel">Services</div>
+      <div class="tab-pill" data-panel="analyticsPanel">Analytics</div>
+      <div class="tab-pill" data-panel="subscribersPanel">Subscribers</div>
+      <div class="tab-pill" data-panel="referralsAdminPanel">Referrals</div>
+      <div class="tab-pill" data-panel="notifyPanel">Notify</div>
+      <div class="tab-pill hidden" id="adminUsersTab" data-panel="adminUsersPanel">Admins</div>
+      <div class="tab-pill" data-panel="securityPanel">Security</div>
+      <div class="tab-pill" data-panel="siteSettingsPanel">Settings</div>
+    </div>
+    <div id="requestsPanel" class="card">
+      <div class="tab-row" id="statusFilter">
+        <div class="tab-pill active" data-status="All">All</div>
+        <div class="tab-pill" data-status="Pending">Pending</div>
+        <div class="tab-pill" data-status="Processing">Processing</div>
+        <div class="tab-pill" data-status="Completed">Completed</div>
+        <div class="tab-pill" data-status="Failed">Failed</div>
+      </div>
+      <div class="req-item-list" id="adminRequestList"></div>
+    </div>
+    <div id="pricingPanel" class="card hidden">
+      <div style="display:flex; justify-content:flex-end; margin-bottom:12px;">
+        <button class="submit-btn" id="newServiceBtn" style="margin:0; width:auto; padding:10px 18px;"><i class="fas fa-plus"></i> New Service</button>
+      </div>
+      <div id="pricingList"></div>
+    </div>
+
+    <div id="analyticsPanel" class="card hidden">
+      <h3 style="margin-bottom:10px;">Revenue — Last 14 Days</h3>
+      <canvas id="revenueChart" height="180"></canvas>
+      <h3 style="margin:25px 0 10px;">Revenue by Service</h3>
+      <canvas id="serviceRevenueChart" height="200"></canvas>
+    </div>
+
+    <div id="subscribersPanel" class="card hidden">
+      <input type="text" id="subscriberSearch" placeholder="Search by name or email…" style="margin-bottom:12px;">
+      <div class="req-item-list" id="subscribersList"></div>
+    </div>
+
+    <div id="referralsAdminPanel" class="card hidden">
+      <div class="price-row">
+        <div><strong>Referral Bonus Amount</strong><div class="help-text">Paid to the referrer when the referred user's first payment succeeds</div></div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <input type="number" id="referralBonusInput" min="0" style="max-width:120px;">
+          <button class="submit-btn" id="saveReferralBonusBtn" style="padding:8px 14px; margin:0;">Save</button>
+        </div>
+      </div>
+      <h3 style="margin:20px 0 10px;">All Referrals</h3>
+      <div class="req-item-list" id="adminReferralsList"></div>
+    </div>
+
+    <div id="notifyPanel" class="card hidden">
+      <form id="notifyForm">
+        <div class="input-group"><label>Send To</label>
+          <select id="notifyTarget">
+            <option value="all">All Users (broadcast)</option>
+            <option value="one">Specific User (by email)</option>
+          </select>
+        </div>
+        <div class="input-group hidden" id="notifyEmailGroup"><label>User Email</label><input type="email" id="notifyEmail" placeholder="user@example.com"></div>
+        <div class="input-group"><label>Title</label><input type="text" id="notifyTitle" required></div>
+        <div class="input-group"><label>Message</label><textarea id="notifyMessage" rows="3" required></textarea></div>
+        <button type="submit" class="submit-btn" id="sendNotifyBtn">Send Notification</button>
+      </form>
+    </div>
+
+    <div id="adminUsersPanel" class="card hidden">
+      <p class="help-text" style="margin-bottom:12px;">Only Super Admins can see this tab and manage staff accounts.</p>
+      <div style="display:flex; justify-content:flex-end; margin-bottom:12px;">
+        <button class="submit-btn" id="newAdminBtn" style="margin:0; width:auto; padding:10px 18px;"><i class="fas fa-user-plus"></i> New Admin</button>
+      </div>
+      <div class="req-item-list" id="adminUsersList"></div>
+    </div>
+
+    <div id="securityPanel" class="card hidden">
+      <h3 class="section-title" style="margin-top:0;">Blacklist</h3>
+      <p class="help-text" style="margin-bottom:10px;">Blocked emails, phones or account refs are rejected at signup, login and checkout.</p>
+      <form id="blacklistForm" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:15px;">
+        <select id="blacklistType" style="max-width:130px;">
+          <option value="email">Email</option>
+          <option value="phone">Phone</option>
+          <option value="account_ref">Account Ref</option>
+        </select>
+        <input type="text" id="blacklistValue" placeholder="Value to block" style="flex:1; min-width:150px;" required>
+        <input type="text" id="blacklistReason" placeholder="Reason (optional)" style="flex:2; min-width:150px;">
+        <button type="submit" class="submit-btn" style="margin:0; width:auto; padding:10px 18px;"><i class="fas fa-ban"></i> Block</button>
+      </form>
+      <div class="req-item-list" id="blacklistList"></div>
+
+      <h3 class="section-title" style="margin-top:25px;">Activity Log</h3>
+      <p class="help-text" style="margin-bottom:10px;">Last 100 admin actions across the platform.</p>
+      <div class="req-item-list" id="auditLogList"></div>
+    </div>
+
+    <div id="siteSettingsPanel" class="card hidden">
+      <form id="siteSettingsForm">
+        <div class="input-group"><label>Site Name</label><input type="text" id="setSiteName" placeholder="REG FLOW"></div>
+        <div class="input-group"><label>Support Email</label><input type="email" id="setSupportEmail" placeholder="support@regflow.com"></div>
+        <div class="input-group"><label>Support Phone</label><input type="text" id="setSupportPhone" placeholder="e.g. 08012345678"></div>
+        <div class="input-group"><label>WhatsApp Number</label><input type="text" id="setWhatsapp" placeholder="e.g. 2348012345678"></div>
+        <div class="input-group"><label>Paystack Public Key</label><input type="text" id="setPaystackKey" placeholder="pk_live_…"></div>
+        <div class="input-group" style="flex-direction:row; align-items:center; gap:8px;">
+          <input type="checkbox" id="setMaintenanceMode" style="width:auto;">
+          <label style="margin:0;">Maintenance Mode (blocks new signups & requests, shows a banner to users)</label>
+        </div>
+        <button type="submit" class="submit-btn" id="saveSiteSettingsBtn">Save Settings</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Admin: Add/Edit System User modal -->
+<div class="modal-overlay hidden" id="adminUserModal">
+  <div class="modal-box">
+    <h3 id="adminUserModalTitle" style="color:var(--dark-blue); margin-bottom:15px;">New Admin</h3>
+    <form id="adminUserForm">
+      <div class="input-group"><label>Full Name</label><input type="text" id="auFullName" required></div>
+      <div class="input-group"><label>Email</label><input type="email" id="auEmail" required></div>
+      <div class="input-group" id="auPasswordGroup"><label>Temporary Password</label><input type="password" id="auPassword" minlength="6" placeholder="min 6 characters"></div>
+      <div class="input-group"><label>Role</label>
+        <select id="auRole">
+          <option value="admin">Admin (full access)</option>
+          <option value="support">Support (read-only)</option>
+          <option value="super_admin">Super Admin</option>
+        </select>
+      </div>
+      <div style="display:flex; gap:10px; margin-top:10px;">
+        <button type="button" class="submit-btn" style="background:#eee; color:#333;" id="cancelAdminUser">Cancel</button>
+        <button type="submit" class="submit-btn" id="saveAdminUserBtn">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Admin: Wallet adjustment modal -->
+<div class="modal-overlay hidden" id="walletAdjustModal">
+  <div class="modal-box">
+    <h3 style="color:var(--dark-blue); margin-bottom:5px;">Adjust Wallet</h3>
+    <p class="help-text" id="walletAdjustUserLabel" style="margin-bottom:15px;"></p>
+    <div class="input-group"><label>Action</label>
+      <select id="walletAdjustDirection">
+        <option value="credit">Credit (add money)</option>
+        <option value="debit">Debit (remove money)</option>
+      </select>
+    </div>
+    <div class="input-group" style="margin-top:10px;"><label>Amount (₦)</label><input type="number" id="walletAdjustAmount" min="1" required></div>
+    <div class="input-group" style="margin-top:10px;"><label>Reason</label><input type="text" id="walletAdjustReason" placeholder="e.g. Refund for failed request"></div>
+    <div style="display:flex; gap:10px; margin-top:15px;">
+      <button class="submit-btn" style="background:#eee; color:#333;" id="cancelWalletAdjust">Cancel</button>
+      <button class="submit-btn" id="confirmWalletAdjust">Apply</button>
+    </div>
+  </div>
+</div>
+
+<!-- Admin: Add/Edit Service modal -->
+<div class="modal-overlay hidden" id="serviceEditModal">
+  <div class="modal-box" style="max-width:560px; max-height:88vh; overflow-y:auto;">
+    <h3 id="serviceEditTitle" style="color:var(--dark-blue); margin-bottom:15px;">Edit Service</h3>
+    <form id="serviceEditForm">
+      <div class="input-group"><label>Service Name</label><input type="text" id="svcEditName" required></div>
+      <div class="input-group"><label>Service Key (unique, no spaces — used internally)</label><input type="text" id="svcEditKey" required pattern="[a-z0-9_]+" placeholder="e.g. passport_application"></div>
+      <div class="input-group"><label>Category</label><input type="text" id="svcEditCategory" value="identity"></div>
+      <div class="input-group"><label>Description</label><textarea id="svcEditDescription" rows="2" required></textarea></div>
+      <div class="input-group"><label>Processing Time</label><input type="text" id="svcEditProcessingTime" placeholder="e.g. 3 - 7 working days" required></div>
+      <div class="input-group"><label>Icon (Font Awesome class)</label><input type="text" id="svcEditIcon" placeholder="e.g. fa-passport" value="fa-file"></div>
+      <div class="input-group"><label>Requirements (one per line)</label><textarea id="svcEditRequirements" rows="3" placeholder="Valid ID&#10;Passport photograph"></textarea></div>
+      <div class="input-group"><label>Service Fee (₦)</label><input type="number" id="svcEditPrice" min="0" required></div>
+
+      <div class="input-group">
+        <label>Information to Collect From User</label>
+        <div id="svcEditFieldsList" style="display:flex; flex-direction:column; gap:8px;"></div>
+        <button type="button" class="submit-btn" id="addFieldBtn" style="background:#eee; color:#333; margin-top:4px; padding:10px;">+ Add Field</button>
+      </div>
+
+      <div class="input-group" style="flex-direction:row; align-items:center; gap:8px;">
+        <input type="checkbox" id="svcEditActive" style="width:auto;" checked>
+        <label style="margin:0;">Active (visible to users)</label>
+      </div>
+
+      <div style="display:flex; gap:10px; margin-top:10px;">
+        <button type="button" class="submit-btn" style="background:#eee; color:#333;" id="cancelServiceEdit">Cancel</button>
+        <button type="submit" class="submit-btn" id="saveServiceBtn">Save Service</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="modal-overlay hidden" id="requestModal">
+  <div class="modal-box" style="max-width:520px; max-height:85vh; overflow-y:auto;"><div id="requestDetailBody"></div></div>
+</div>
+
+<!-- ========================= SHARED MODALS ========================= -->
+<div class="modal-overlay hidden" id="insufficientModal">
+  <div class="modal-box" style="text-align:center;">
+    <i class="fas fa-wallet" style="font-size:2.5rem; color:var(--status-pending);"></i>
+    <h3 style="color:var(--dark-blue); margin:15px 0 8px;">Insufficient Balance</h3>
+    <p class="help-text" id="insufficientMsg" style="margin-bottom:20px;"></p>
+    <div style="display:flex; gap:10px;">
+      <button class="submit-btn" style="background:#eee; color:#333;" id="cancelInsufficient">Cancel</button>
+      <button class="submit-btn" id="depositNowBtn">Deposit Now</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay hidden" id="topUpModal">
+  <div class="modal-box">
+    <h3 style="color:var(--dark-blue); margin-bottom:15px;">Fund Wallet</h3>
+    <div class="input-group" style="margin-bottom:15px;"><label>Amount (₦)</label><input type="number" id="topUpAmount" min="100" placeholder="e.g. 5000"></div>
+    <div style="display:flex; gap:10px;">
+      <button class="submit-btn" style="background:#eee; color:#333;" id="cancelTopUp">Cancel</button>
+      <button class="submit-btn" id="confirmTopUp">Pay with Paystack</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+/* =====================================================================
+   REG FLOW — Single-file app
+   Fill in the three values below, then this file is fully wired to
+   Supabase (auth/db/storage/realtime) and Paystack.
+   ===================================================================== */
+if (!window.supabase || !window.supabase.createClient) {
+  // The Supabase library script tag in <head> didn't load — almost
+  // always a network problem, not a code problem. Fail loud and clear
+  // instead of leaving a blank/stuck screen with no explanation.
+  const box = document.getElementById("__bootStatus");
+  if (box) box.innerHTML = "Couldn't load a required script (Supabase library). Check your internet connection and reload.<br><br>" +
+    '<button onclick="location.reload()" style="padding:10px 20px;border:none;border-radius:8px;background:#00bcd4;color:#fff;font-weight:700;">Retry</button>';
+  throw new Error("Supabase UMD library failed to load.");
+}
+const { createClient } = window.supabase;
+
+// Loads an external script on demand and only once, so heavy libraries
+// (Chart.js, Paystack) aren't downloaded by every visitor up front —
+// only by the admin who opens Analytics, or the customer who taps Pay.
+const _loadedScripts = {};
+function loadScriptOnce(src) {
+  if (_loadedScripts[src]) return _loadedScripts[src];
+  _loadedScripts[src] = new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = src;
+    s.onload = resolve;
+    s.onerror = () => reject(new Error("Could not load " + src));
+    document.head.appendChild(s);
+  });
+  return _loadedScripts[src];
+}
+
+const APP_CONFIG = {
+  SUPABASE_URL: "https://txoxcqbyyizvzrqfwpkb.supabase.co",
+  SUPABASE_ANON_KEY: "sb_publishable_UwflH5BSi_a-sTTyOlwX4Q_2cxJIFOK",
+  PAYSTACK_PUBLIC_KEY: "pk_test_ecd0baa43d8b416353bc511324513a573c03034e",
+  STORAGE_BUCKET: "documents",
+  CURRENCY: "NGN",
+  CURRENCY_SYMBOL: "₦"
+};
+window.APP_CONFIG = APP_CONFIG;
+
+// Captured before the Supabase client processes/strips it, so we can
+// tell an email-confirmation redirect apart from a normal visit.
+const _initialHash = window.location.hash || "";
+const _isEmailConfirmation = /type=(signup|invite|email_change)/.test(_initialHash);
+
+const supabase = createClient(APP_CONFIG.SUPABASE_URL, APP_CONFIG.SUPABASE_ANON_KEY, {
+  auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true }
+});
+
+// Surfaces any otherwise-silent JS error as an on-screen toast, so a
+// broken feature shows a screenshot-able message instead of just
+// quietly not working.
+window.addEventListener("error", (e) => {
+  console.error("App error:", e.error || e.message);
+  showFatalToast(e.message || "Something went wrong.");
+});
+window.addEventListener("unhandledrejection", (e) => {
+  console.error("Unhandled promise rejection:", e.reason);
+  showFatalToast((e.reason && e.reason.message) || "Something went wrong.");
+});
+function showFatalToast(msg) {
+  document.getElementById("__bootStatus")?.remove();
+  const el = document.createElement("div");
+  el.className = "toast error";
+  el.style.bottom = "80px";
+  el.textContent = "Error: " + msg;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 6000);
+}
+
+/* ---------------------------- helpers ---------------------------- */
+function formatMoney(amount) {
+  return APP_CONFIG.CURRENCY_SYMBOL + Number(amount || 0).toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function toast(message, type = "") {
+  const el = document.createElement("div");
+  el.className = "toast" + (type ? " " + type : "");
+  el.textContent = message;
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 3500);
+}
+function statusBadge(status) {
+  const cls = { Pending: "status-pending", Processing: "status-processing", Completed: "status-completed", Failed: "status-failed" }[status] || "status-pending";
+  return `<span class="status-badge ${cls}">${status}</span>`;
+}
+
+// Checks for any resumable service state, preferring an already-paid
+// request awaiting documents (real money moved) over an unsaved form.
+function findResumableServiceKey() {
+  try {
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const k = sessionStorage.key(i);
+      if (k && k.startsWith("svc-pending-docs-")) return { key: k.replace("svc-pending-docs-", ""), pending: true };
+    }
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const k = sessionStorage.key(i);
+      if (k && k.startsWith("svc-progress-")) return { key: k.replace("svc-progress-", ""), pending: false };
+    }
+  } catch (e) { /* storage unavailable */ }
+  return null;
+}
+async function getProfile(userId) {
+  const { data, error } = await supabase.from("users").select("*").eq("id", userId).single();
+  if (error) throw error;
+  return data;
+}
+async function getWallet(userId) {
+  const { data, error } = await supabase.from("wallets").select("*").eq("user_id", userId).single();
+  if (error) throw error;
+  return data;
+}
+
+/* ---------------------------- view router ---------------------------- */
+let currentUser = null;
+let currentProfile = null;
+
+function showView(name) {
+  document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
+  document.getElementById("view-" + name).classList.add("active");
+}
+function showSubview(name) {
+  document.querySelectorAll(".subview").forEach(v => v.classList.remove("active"));
+  document.getElementById("sub-" + name).classList.add("active");
+}
+function navigate(route) { location.hash = route; }
+document.querySelectorAll("[data-nav]").forEach(el => el.addEventListener("click", () => navigate(el.dataset.nav)));
+
+window.addEventListener("hashchange", router);
+
+async function router() {
+  const hash = location.hash.replace("#", "");
+  const [route, param] = hash.split("/");
+
+  if (route === "forgot") { showView("forgot"); return; }
+  if (route === "admin-login") { showView("admin-login"); return; }
+  if (route === "admin") {
+    const ok = await gateAdmin();
+    if (ok) { showView("admin"); loadAdminStats(); loadAdminRequests(); }
+    return;
+  }
+
+  // regular (customer) routes require a session
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) { showView("auth"); return; }
+  currentUser = session.user;
+  if (!currentProfile) currentProfile = await getProfile(currentUser.id);
+
+  showView("app");
+  switch (route) {
+    case "service": showSubview("service"); loadServicePage(param); break;
+    case "wallet": showSubview("wallet"); loadWalletPage(); break;
+    case "history": showSubview("history"); loadHistoryPage(param || "requests"); break;
+    case "notifications": showSubview("notifications"); loadNotificationsPage(); break;
+    case "profile": showSubview("profile"); loadProfilePage(); break;
+    case "referrals": showSubview("referrals"); loadReferralsPage(); break;
+    default: {
+      // If we just opened the document picker (within the last 10s) and
+      // there's resumable state on a service, this "dashboard" landing
+      // is almost certainly the OS treating the picker as a back-nav,
+      // not something the person actually chose — send them straight
+      // back instead of showing the dashboard.
+      const justOpenedPicker = window.__lastFilePickerOpen && (Date.now() - window.__lastFilePickerOpen < 10000);
+      const resumable = justOpenedPicker ? findResumableServiceKey() : null;
+      if (resumable) {
+        navigate("service/" + resumable.key);
+      } else {
+        showSubview("dashboard"); loadDashboard();
+      }
+    }
+  }
+}
+
+/* ---------------------------- auth screen ---------------------------- */
+document.getElementById("loginTab").onclick = () => switchAuthTab("login");
+
+// Someone arriving via a shared referral link (?ref=CODE) — prefill the
+// code and take them straight to the register tab.
+(function prefillReferralCode() {
+  const refCode = new URLSearchParams(window.location.search).get("ref");
+  if (!refCode) return;
+  const field = document.getElementById("regReferralCode");
+  if (field) field.value = refCode.toUpperCase();
+  switchAuthTab("register");
+})();
+document.getElementById("registerTab").onclick = () => switchAuthTab("register");
+function switchAuthTab(type) {
+  document.getElementById("loginForm").classList.toggle("hidden", type !== "login");
+  document.getElementById("registerForm").classList.toggle("hidden", type !== "register");
+  document.getElementById("loginTab").classList.toggle("active", type === "login");
+  document.getElementById("registerTab").classList.toggle("active", type === "register");
+}
+
+document.getElementById("loginForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const errorEl = document.getElementById("loginError");
+  errorEl.classList.add("hidden");
+  const email = document.getElementById("loginEmail").value.trim();
+  const password = document.getElementById("loginPassword").value;
+  const btn = document.getElementById("loginBtn");
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Please wait…';
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  btn.disabled = false; btn.innerHTML = "Sign In";
+  if (error) { errorEl.textContent = error.message || "Invalid email or password."; errorEl.classList.remove("hidden"); return; }
+  currentProfile = null;
+  navigate("dashboard"); router();
+});
+
+document.getElementById("registerForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const errorEl = document.getElementById("regError");
+  errorEl.classList.add("hidden");
+  const full_name = document.getElementById("regName").value.trim();
+  const phone = document.getElementById("regPhone").value.trim();
+  const address = document.getElementById("regAddress").value.trim();
+  const email = document.getElementById("regEmail").value.trim();
+  const pass = document.getElementById("regPass").value;
+  const confirm = document.getElementById("confirmPass").value;
+  const referred_by_code = document.getElementById("regReferralCode").value.trim();
+  const btn = document.getElementById("regBtn");
+
+  if (!/^[0-9+ ]{10,15}$/.test(phone)) { errorEl.textContent = "Enter a valid phone number."; errorEl.classList.remove("hidden"); return; }
+  if (pass.length < 6) { errorEl.textContent = "Password must be at least 6 characters."; errorEl.classList.remove("hidden"); return; }
+  if (pass !== confirm) { errorEl.textContent = "Passwords do not match!"; errorEl.classList.remove("hidden"); return; }
+
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Please wait…';
+  const { data, error } = await supabase.auth.signUp({
+    email, password: pass,
+    options: { data: { full_name, phone, address, referred_by_code: referred_by_code || undefined } }
+  });
+  btn.disabled = false; btn.innerHTML = "Create Account";
+  if (error) { errorEl.textContent = error.message || "Could not create account."; errorEl.classList.remove("hidden"); return; }
+
+  if (data?.session) {
+    // Email confirmation is OFF on this project — signUp already returns
+    // an active session, so just take them straight in.
+    toast("Account created! Welcome.", "success");
+    currentProfile = null;
+    navigate("dashboard"); router();
+  } else {
+    // Email confirmation is ON — no session yet, they must click the
+    // link in their inbox first.
+    toast("Account created! Check your email to confirm before signing in.", "success");
+    switchAuthTab("login");
+    e.target.reset();
+  }
+});
+
+/* ---------------------------- Google sign-in ---------------------------- */
+document.getElementById("googleSignInBtn").onclick = async () => {
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: "google",
+    options: { redirectTo: window.location.href.split("#")[0] }
+  });
+  if (error) toast(error.message || "Could not start Google sign-in.", "error");
+};
+
+// Handles both password-based and Google sign-ins consistently, and
+// catches the moment Supabase finishes parsing the OAuth redirect
+// (which can otherwise race against our own hash-based router).
+supabase.auth.onAuthStateChange((event) => {
+  if (event === "SIGNED_IN") {
+    if (_isEmailConfirmation) {
+      // Don't auto-log them in off the confirmation link — sign back out
+      // and land them on the login tab so they consciously sign in.
+      supabase.auth.signOut().then(() => {
+        currentProfile = null;
+        navigate(""); router();
+        switchAuthTab("login");
+        toast("Email confirmed! Please log in to continue.", "success");
+      });
+      return;
+    }
+    currentProfile = null;
+    navigate("dashboard"); router();
+  }
+  if (event === "SIGNED_OUT") {
+    currentProfile = null;
+    const hash = location.hash.replace("#", "").split("/")[0];
+    // Signing out of a failed/expired admin session should keep the
+    // person on the admin-login screen (with its error message intact),
+    // not bounce them to the customer signup/login screen.
+    if (hash === "admin" || hash === "admin-login") { showView("admin-login"); }
+    else { navigate(""); router(); }
+  }
+});
+
+/* ---------------------------- forgot password / OTP ---------------------------- */
+let resetEmail = "";
+
+document.getElementById("forgotEmailForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const errorEl = document.getElementById("forgotEmailError");
+  errorEl.classList.add("hidden");
+  resetEmail = document.getElementById("forgotEmail").value.trim();
+  const btn = document.getElementById("forgotEmailBtn");
+
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Sending…';
+  // Requires the Supabase "Reset Password" email template to include
+  // {{ .Token }} so the email contains a 6-digit code (see setup notes).
+  const { error } = await supabase.auth.resetPasswordForEmail(resetEmail);
+  btn.disabled = false; btn.innerHTML = "Send Reset Code";
+
+  if (error) { errorEl.textContent = error.message || "Could not send reset code."; errorEl.classList.remove("hidden"); return; }
+
+  document.getElementById("forgotEmailDisplay").textContent = resetEmail;
+  document.getElementById("forgotStepEmail").classList.add("hidden");
+  document.getElementById("forgotStepOtp").classList.remove("hidden");
+  toast("Reset code sent — check your email.", "success");
+});
+
+document.getElementById("resendCodeLink").onclick = async (e) => {
+  e.preventDefault();
+  await supabase.auth.resetPasswordForEmail(resetEmail);
+  toast("Code resent.", "success");
+};
+
+document.getElementById("forgotOtpForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const errorEl = document.getElementById("forgotOtpError");
+  errorEl.classList.add("hidden");
+  const token = document.getElementById("forgotOtp").value.trim();
+  const newPass = document.getElementById("forgotNewPass").value;
+  const confirmPass = document.getElementById("forgotConfirmPass").value;
+  const btn = document.getElementById("forgotOtpBtn");
+
+  if (newPass.length < 6) { errorEl.textContent = "Password must be at least 6 characters."; errorEl.classList.remove("hidden"); return; }
+  if (newPass !== confirmPass) { errorEl.textContent = "Passwords do not match!"; errorEl.classList.remove("hidden"); return; }
+
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Verifying…';
+
+  const { error: verifyError } = await supabase.auth.verifyOtp({ email: resetEmail, token, type: "recovery" });
+  if (verifyError) {
+    btn.disabled = false; btn.innerHTML = "Reset Password";
+    errorEl.textContent = "Invalid or expired code."; errorEl.classList.remove("hidden");
+    return;
+  }
+
+  const { error: updateError } = await supabase.auth.updateUser({ password: newPass });
+  btn.disabled = false; btn.innerHTML = "Reset Password";
+
+  if (updateError) { errorEl.textContent = updateError.message || "Could not set new password."; errorEl.classList.remove("hidden"); return; }
+
+  toast("Password updated! You're now signed in.", "success");
+  document.getElementById("forgotStepEmail").classList.remove("hidden");
+  document.getElementById("forgotStepOtp").classList.add("hidden");
+  document.getElementById("forgotEmailForm").reset();
+  document.getElementById("forgotOtpForm").reset();
+  navigate("dashboard"); router();
+});
+
+
+
+function closeAnyPanel() { document.querySelectorAll(".panel-overlay").forEach(p => p.remove()); }
+
+function openProfilePanel() {
+  closeAnyPanel();
+  const overlay = document.createElement("div");
+  overlay.className = "panel-overlay";
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  overlay.innerHTML = `
+    <div class="panel">
+      <i class="fas fa-times panel-close"></i>
+      <h3>${currentProfile?.full_name || "My Account"}</h3>
+      <div class="panel-menu-item" data-r="wallet"><i class="fas fa-wallet"></i> Wallet</div>
+      <div class="panel-menu-item" data-r="history/requests"><i class="fas fa-clipboard-list"></i> Request History</div>
+      <div class="panel-menu-item" data-r="history/services"><i class="fas fa-layer-group"></i> Service History</div>
+      <div class="panel-menu-item" data-r="history/payments"><i class="fas fa-receipt"></i> Payment History</div>
+      <div class="panel-menu-item" data-r="notifications"><i class="fas fa-bell"></i> Notifications</div>
+      <div class="panel-menu-item" data-r="referrals"><i class="fas fa-user-friends"></i> Refer &amp; Earn</div>
+      <div class="panel-menu-item" data-r="profile"><i class="fas fa-user"></i> Profile</div>
+      <div class="panel-menu-item" id="logoutItem"><i class="fas fa-sign-out-alt"></i> Logout</div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector(".panel-close").onclick = () => overlay.remove();
+  overlay.querySelectorAll("[data-r]").forEach(item => item.onclick = () => { overlay.remove(); navigate(item.dataset.r); });
+  overlay.querySelector("#logoutItem").onclick = async () => { await supabase.auth.signOut(); overlay.remove(); currentProfile = null; navigate(""); router(); };
+}
+
+async function openNotificationsPanel() {
+  closeAnyPanel();
+  const overlay = document.createElement("div");
+  overlay.className = "panel-overlay";
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  overlay.innerHTML = `<div class="panel"><i class="fas fa-times panel-close"></i><h3>Notifications</h3><div id="notifList"><div class="empty-state">Loading…</div></div></div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector(".panel-close").onclick = () => overlay.remove();
+
+  const { data, error } = await supabase.from("notifications").select("*").eq("user_id", currentUser.id).order("created_at", { ascending: false }).limit(30);
+  const list = overlay.querySelector("#notifList");
+  if (error || !data || data.length === 0) { list.innerHTML = `<div class="empty-state"><i class="fas fa-bell-slash"></i>No notifications yet</div>`; return; }
+  list.innerHTML = data.map(n => `<div class="notif-item ${n.is_read ? "" : "unread"}"><div class="notif-title">${n.title}</div><div class="notif-msg">${n.message}</div><div class="notif-time">${new Date(n.created_at).toLocaleString()}</div></div>`).join("");
+  const unreadIds = data.filter(n => !n.is_read).map(n => n.id);
+  if (unreadIds.length) await supabase.from("notifications").update({ is_read: true }).in("id", unreadIds);
+}
+
+document.getElementById("profileIcon").onclick = openProfilePanel;
+document.getElementById("bellIcon").onclick = openNotificationsPanel;
+
+/* ---------------------------- admin trigger ---------------------------- */
+// Admin access is via the direct URL only now: yoursite.com/#admin-login
+// (no on-screen button, no tap gesture — kept intentionally unlisted).
+
+
+/* ---------------------------- dashboard ---------------------------- */
+// Kept as static mock placeholders — not part of the requested six
+// services, so left as "coming soon" (no design change). Real services
+// now come entirely from the database (see loadDashboard).
+const utilityServices = [
+  { name: "Exam PINs", icon: "fa-graduation-cap" }, { name: "Cable TV", icon: "fa-tv" },
+  { name: "Buy Data", icon: "fa-wifi" }, { name: "Buy Airtime", icon: "fa-phone-alt" },
+  { name: "Electricity", icon: "fa-bolt" }, { name: "Internet Fiber", icon: "fa-network-wired" }
+];
+
+let dashboardChannel = null;
+let cachedServices = []; // refreshed on every dashboard load; used for resume-banner lookups too
+
+async function loadDashboard() {
+  const wallet = await getWallet(currentUser.id);
+  document.getElementById("walletBalance").textContent = formatMoney(wallet.balance);
+  document.getElementById("walletId").textContent = "ID: " + currentProfile.account_ref;
+
+  // Services are loaded fresh from the database every visit — anything
+  // an admin adds, renames, or deactivates shows up here automatically,
+  // no app update needed.
+  const { data: services } = await supabase
+    .from("services")
+    .select("id, service_key, name, icon, service_prices(price)")
+    .eq("is_active", true)
+    .order("name");
+  cachedServices = services || [];
+
+  // If there's resumable state (an unsaved form, or worse, an already
+  // paid request still waiting on documents), offer a one-tap way back
+  // instead of the person having to notice or remember it themselves.
+  const banner = document.getElementById("resumeBanner");
+  const resumable = findResumableServiceKey();
+
+  if (resumable) {
+    const svc = cachedServices.find(s => s.service_key === resumable.key);
+    const name = svc ? svc.name : "your request";
+    document.getElementById("resumeBannerText").textContent = resumable.pending
+      ? `Your ${name} request was submitted and paid — it just needs documents attached.`
+      : `You started a ${name} request — pick up where you left off.`;
+    document.getElementById("resumeBannerBtn").onclick = () => navigate("service/" + resumable.key);
+    banner.classList.remove("hidden");
+  } else {
+    banner.classList.add("hidden");
+  }
+
+  const idGrid = document.getElementById("idGrid");
+  const utilGrid = document.getElementById("utilGrid");
+
+  idGrid.innerHTML = "";
+  cachedServices.forEach(s => {
+    const item = document.createElement("div");
+    item.className = "service-item";
+    item.innerHTML = `<div class="service-icon"><i class="fas ${s.icon}"></i></div><p>${s.name}</p><small class="fee-tag" style="display:block; color:var(--light-blue); font-weight:800; margin-top:4px;">${formatMoney(s.service_prices?.price ?? 0)}</small>`;
+    item.onclick = () => navigate("service/" + s.service_key);
+    idGrid.appendChild(item);
+  });
+
+  if (!utilGrid.dataset.built) {
+    utilityServices.forEach(s => {
+      const item = document.createElement("div");
+      item.className = "service-item";
+      item.innerHTML = `<div class="service-icon"><i class="fas ${s.icon}"></i></div><p>${s.name}</p>`;
+      item.onclick = () => toast(`${s.name} is coming soon.`);
+      utilGrid.appendChild(item);
+    });
+    utilGrid.dataset.built = "1";
+  }
+
+  const { data } = await supabase.from("service_requests").select("id, reference, amount, status, created_at, services(name)").eq("user_id", currentUser.id).order("created_at", { ascending: false }).limit(5);
+  const container = document.getElementById("recentRequests");
+  if (!data || data.length === 0) { container.innerHTML = `<div class="empty-state"><i class="fas fa-inbox"></i>No requests yet</div>`; }
+  else {
+    container.innerHTML = data.map(r => `
+      <div class="req-list-item" id="req-${r.id}">
+        <div><div class="req-name">${r.services?.name || "Service"}</div><div class="req-ref">${r.reference} • ${new Date(r.created_at).toLocaleDateString()}</div></div>
+        <div style="text-align:right;"><div class="req-amount">${formatMoney(r.amount)}</div><div id="status-${r.id}">${statusBadge(r.status)}</div></div>
+      </div>`).join("");
+  }
+
+  if (dashboardChannel) supabase.removeChannel(dashboardChannel);
+  dashboardChannel = supabase.channel("dashboard-requests-" + currentUser.id)
+    .on("postgres_changes", { event: "UPDATE", schema: "public", table: "service_requests", filter: `user_id=eq.${currentUser.id}` }, (payload) => {
+      const row = payload.new;
+      const badge = document.getElementById(`status-${row.id}`);
+      if (badge) badge.innerHTML = statusBadge(row.status);
+      toast(`Request ${row.reference} is now ${row.status}`, row.status === "Failed" ? "error" : "success");
+    }).subscribe();
+}
+
+/* ---------------------------- top-up / paystack ---------------------------- */
+function genReference(prefix = "RF") { return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 100000)}`; }
+
+async function payWithPaystack({ email, amount, purpose, metadata = {} }) {
+  if (!window.PaystackPop) {
+    try { await loadScriptOnce("https://js.paystack.co/v1/inline.js"); }
+    catch (e) { throw new Error("Could not load the payment library — check your connection and try again."); }
+  }
+  return new Promise((resolve, reject) => {
+    if (!window.PaystackPop) { reject(new Error("Paystack script not loaded.")); return; }
+    const reference = genReference();
+    const handler = window.PaystackPop.setup({
+      key: APP_CONFIG.PAYSTACK_PUBLIC_KEY, email, amount: Math.round(amount * 100),
+      currency: APP_CONFIG.CURRENCY, ref: reference, metadata,
+      callback: (response) => verifyPayment({ reference: response.reference, purpose, metadata }).then(resolve).catch(reject),
+      onClose: () => reject(new Error("Payment window closed."))
+    });
+    handler.openIframe();
+  });
+}
+
+async function verifyPayment({ reference, purpose, metadata }) {
+  const { data: { session } } = await supabase.auth.getSession();
+  const res = await fetch(`${APP_CONFIG.SUPABASE_URL}/functions/v1/verify-payment`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+    body: JSON.stringify({ reference, purpose, metadata })
+  });
+  const json = await res.json();
+  if (!res.ok || !json.success) throw new Error(json.error || "Payment verification failed.");
+  return json;
+}
+
+function wireTopUp(btnId, modalId, confirmId, amountId, balanceElId) {
+  document.getElementById(btnId).onclick = () => document.getElementById(modalId).classList.remove("hidden");
+}
+wireTopUp("topUpBtn", "topUpModal", "confirmTopUp", "topUpAmount", "walletBalance");
+document.getElementById("topUpBtn2").onclick = () => document.getElementById("topUpModal").classList.remove("hidden");
+document.getElementById("cancelTopUp").onclick = () => document.getElementById("topUpModal").classList.add("hidden");
+
+document.getElementById("confirmTopUp").onclick = async () => {
+  const amount = Number(document.getElementById("topUpAmount").value);
+  if (!amount || amount < 100) { toast("Enter a valid amount (min ₦100).", "error"); return; }
+  const confirmBtn = document.getElementById("confirmTopUp");
+  confirmBtn.disabled = true; confirmBtn.innerHTML = '<span class="spinner"></span> Processing…';
+  try {
+    await payWithPaystack({ email: currentProfile.email, amount, purpose: "wallet_funding", metadata: { user_id: currentUser.id } });
+    const wallet = await getWallet(currentUser.id);
+    document.getElementById("walletBalance").textContent = formatMoney(wallet.balance);
+    document.getElementById("walletBalance2").textContent = formatMoney(wallet.balance);
+    toast("Wallet funded successfully!", "success");
+    document.getElementById("topUpModal").classList.add("hidden");
+  } catch (err) { toast(err.message || "Payment failed.", "error"); }
+  finally { confirmBtn.disabled = false; confirmBtn.innerHTML = "Pay with Paystack"; }
+};
+
+/* ---------------------------- wallet page ---------------------------- */
+async function loadWalletPage() {
+  const wallet = await getWallet(currentUser.id);
+  document.getElementById("walletBalance2").textContent = formatMoney(wallet.balance);
+  document.getElementById("walletId2").textContent = "ID: " + currentProfile.account_ref;
+
+  const { data } = await supabase.from("payments").select("*").eq("user_id", currentUser.id).order("created_at", { ascending: false }).limit(20);
+  const container = document.getElementById("walletTxns");
+  if (!data || data.length === 0) { container.innerHTML = `<div class="empty-state"><i class="fas fa-receipt"></i>No transactions yet</div>`; return; }
+  container.innerHTML = data.map(p => `
+    <div class="req-list-item">
+      <div><div class="req-name">${p.purpose === "wallet_funding" ? "Wallet Top-up" : "Service Payment"}</div><div class="req-ref">${p.reference} • ${new Date(p.created_at).toLocaleDateString()}</div></div>
+      <div style="text-align:right;"><div class="req-amount">${formatMoney(p.amount)}</div><small class="help-text">${p.status}</small></div>
+    </div>`).join("");
+}
+
+/* ---------------------------- history page ---------------------------- */
+let historyTab = "requests";
+document.querySelectorAll("[data-histtab]").forEach(p => p.onclick = () => { historyTab = p.dataset.histtab; navigate("history/" + historyTab); });
+
+async function loadHistoryPage(tab) {
+  historyTab = tab;
+  document.querySelectorAll("[data-histtab]").forEach(p => p.classList.toggle("active", p.dataset.histtab === tab));
+  const container = document.getElementById("historyList");
+  container.innerHTML = `<div class="empty-state">Loading…</div>`;
+
+  if (tab === "requests") {
+    const { data } = await supabase.from("service_requests").select("id, reference, amount, status, created_at, services(name)").eq("user_id", currentUser.id).order("created_at", { ascending: false });
+    container.innerHTML = (data || []).map(r => `
+      <div class="req-list-item"><div><div class="req-name">${r.services?.name || "Service"}</div><div class="req-ref">${r.reference} • ${new Date(r.created_at).toLocaleDateString()}</div></div>
+      <div style="text-align:right;"><div class="req-amount">${formatMoney(r.amount)}</div>${statusBadge(r.status)}</div></div>`).join("") || `<div class="empty-state"><i class="fas fa-inbox"></i>Nothing here yet</div>`;
+  } else if (tab === "services") {
+    const { data } = await supabase.from("service_requests").select("services(name, icon)").eq("user_id", currentUser.id);
+    const counts = {};
+    (data || []).forEach(r => { const name = r.services?.name || "Service"; counts[name] = counts[name] || { count: 0, icon: r.services?.icon || "fa-file" }; counts[name].count++; });
+    container.innerHTML = Object.entries(counts).map(([name, v]) => `
+      <div class="req-list-item"><div style="display:flex; align-items:center; gap:12px;"><div class="service-icon" style="margin:0; width:40px; height:40px;"><i class="fas ${v.icon}"></i></div><div class="req-name">${name}</div></div><div class="req-amount">${v.count} request${v.count > 1 ? "s" : ""}</div></div>`).join("") || `<div class="empty-state"><i class="fas fa-inbox"></i>Nothing here yet</div>`;
+  } else {
+    const { data } = await supabase.from("payments").select("*").eq("user_id", currentUser.id).order("created_at", { ascending: false });
+    container.innerHTML = (data || []).map(p => `
+      <div class="req-list-item"><div><div class="req-name">${p.purpose === "wallet_funding" ? "Wallet Top-up" : "Service Payment"}</div><div class="req-ref">${p.reference} • ${new Date(p.created_at).toLocaleDateString()}</div></div>
+      <div style="text-align:right;"><div class="req-amount">${formatMoney(p.amount)}</div><small class="help-text">${p.status}</small></div></div>`).join("") || `<div class="empty-state"><i class="fas fa-inbox"></i>Nothing here yet</div>`;
+  }
+}
+
+/* ---------------------------- notifications page ---------------------------- */
+let notifChannel = null;
+async function loadNotificationsPage() {
+  const { data } = await supabase.from("notifications").select("*").eq("user_id", currentUser.id).order("created_at", { ascending: false });
+  renderNotifList(data);
+  const unreadIds = (data || []).filter(n => !n.is_read).map(n => n.id);
+  if (unreadIds.length) await supabase.from("notifications").update({ is_read: true }).in("id", unreadIds);
+
+  if (notifChannel) supabase.removeChannel(notifChannel);
+  notifChannel = supabase.channel("notif-page-" + currentUser.id)
+    .on("postgres_changes", { event: "INSERT", schema: "public", table: "notifications", filter: `user_id=eq.${currentUser.id}` }, async () => {
+      const { data } = await supabase.from("notifications").select("*").eq("user_id", currentUser.id).order("created_at", { ascending: false });
+      renderNotifList(data);
+    }).subscribe();
+}
+function renderNotifList(data) {
+  const list = document.getElementById("notifPageList");
+  if (!data || data.length === 0) { list.innerHTML = `<div class="empty-state"><i class="fas fa-bell-slash"></i>No notifications yet</div>`; return; }
+  list.innerHTML = data.map(n => `<div class="notif-item ${n.is_read ? "" : "unread"}"><div class="notif-title">${n.title}</div><div class="notif-msg">${n.message}</div><div class="notif-time">${new Date(n.created_at).toLocaleString()}</div></div>`).join("");
+}
+
+/* ---------------------------- profile page ---------------------------- */
+async function loadProfilePage() {
+  document.getElementById("pFullName").value = currentProfile.full_name || "";
+  document.getElementById("pEmail").value = currentProfile.email || "";
+  document.getElementById("pPhone").value = currentProfile.phone || "";
+  document.getElementById("pAddress").value = currentProfile.address || "";
+}
+document.getElementById("profileForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById("saveProfileBtn");
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Saving…';
+  const { error } = await supabase.from("users").update({
+    full_name: document.getElementById("pFullName").value.trim(),
+    phone: document.getElementById("pPhone").value.trim(),
+    address: document.getElementById("pAddress").value.trim()
+  }).eq("id", currentUser.id);
+  btn.disabled = false; btn.innerHTML = "Save Changes";
+  if (error) toast("Could not save changes.", "error");
+  else { toast("Profile updated!", "success"); currentProfile = await getProfile(currentUser.id); }
+});
+
+/* ---------------------------- refer & earn ---------------------------- */
+async function loadReferralsPage() {
+  document.getElementById("myReferralCode").textContent = currentProfile.referral_code || "------";
+
+  document.getElementById("copyReferralLinkBtn").onclick = async () => {
+    const link = `${window.location.origin}${window.location.pathname}?ref=${currentProfile.referral_code}`;
+    try {
+      await navigator.clipboard.writeText(link);
+      toast("Referral link copied!", "success");
+    } catch (e) {
+      toast(link, ""); // fallback: show it in a toast so it can be manually copied
+    }
+  };
+
+  const { data, error } = await supabase
+    .from("referrals")
+    .select("bonus_amount, bonus_paid, created_at, users!referrals_referred_id_fkey(full_name, email)")
+    .eq("referrer_id", currentUser.id)
+    .order("created_at", { ascending: false });
+
+  const list = document.getElementById("referralsList");
+  if (error || !data || data.length === 0) {
+    list.innerHTML = `<div class="empty-state"><i class="fas fa-user-friends"></i>No referrals yet — share your link above</div>`;
+    return;
+  }
+  list.innerHTML = data.map(r => `
+    <div class="req-list-item">
+      <div><div class="req-name">${r.users?.full_name || "New user"}</div><div class="req-ref">${new Date(r.created_at).toLocaleDateString()}</div></div>
+      <div style="text-align:right;">
+        <div class="req-amount">${formatMoney(r.bonus_amount)}</div>
+        ${r.bonus_paid ? '<span class="status-badge status-completed">Earned</span>' : '<span class="status-badge status-pending">Pending</span>'}
+      </div>
+    </div>`).join("");
+}
+
+/* ---------------------------- service detail page ---------------------------- */
+// Field definitions now live on the service row itself (services.form_fields
+// in the database) so admins can fully customize what each service asks
+// for — including brand new services — with zero code changes.
+
+let svcState = { service: null, price: 0, formData: {}, files: [], key: null };
+
+function showStep(step) {
+  ["form", "review", "docs", "success"].forEach(s => document.getElementById(`step-${s}`).classList.toggle("hidden", s !== step));
+  const stepIndex = { form: 1, review: 2, docs: 3, success: 3 }[step];
+  for (let i = 1; i <= 3; i++) {
+    const dot = document.getElementById(`dot-${i}`);
+    dot.classList.remove("active", "done");
+    if (i < stepIndex) dot.classList.add("done"); else if (i === stepIndex) dot.classList.add("active");
+  }
+}
+
+function renderFormFields() {
+  const fields = svcState.service?.form_fields || [];
+  const form = document.getElementById("dynamicForm");
+  if (fields.length === 0) {
+    form.innerHTML = `<div class="input-group"><label>Additional Information (optional)</label><textarea name="notes" rows="3" placeholder="Anything else we should know?"></textarea></div>`;
+    return;
+  }
+  form.innerHTML = fields.map(f => f.type === "select"
+    ? `<div class="input-group"><label>${f.label}${f.required ? " *" : ""}</label><select name="${f.key}" ${f.required ? "required" : ""}><option value="">Select…</option>${(f.options || []).map(o => `<option value="${o}">${o}</option>`).join("")}</select></div>`
+    : `<div class="input-group"><label>${f.label}${f.required ? " *" : ""}</label><input type="${f.type}" name="${f.key}" ${f.required ? "required" : ""}></div>`
+  ).join("");
+}
+function collectFormData() {
+  const fd = new FormData(document.getElementById("dynamicForm"));
+  const data = {};
+  for (const [k, v] of fd.entries()) data[k] = typeof v === "string" ? v.trim() : v;
+  return data;
+}
+function renderReview() {
+  const fields = svcState.service?.form_fields || [{ key: "notes", label: "Notes" }];
+  let html = `<table style="width:100%; border-collapse:collapse;">`;
+  fields.forEach(f => html += `<tr><td style="padding:6px 0; color:#888;">${f.label}</td><td style="padding:6px 0; font-weight:600; text-align:right;">${svcState.formData[f.key] || "-"}</td></tr>`);
+  html += `<tr><td style="padding:10px 0; color:#888;">Service Fee</td><td style="padding:10px 0; font-weight:800; text-align:right; color:var(--dark-blue);">${formatMoney(svcState.price)}</td></tr></table>`;
+  document.getElementById("reviewSummary").innerHTML = html;
+}
+
+function progressKey(key) { return `svc-progress-${key}`; }
+function pendingDocsKey(key) { return `svc-pending-docs-${key}`; }
+
+function saveProgress() {
+  try {
+    sessionStorage.setItem(progressKey(svcState.key), JSON.stringify({ formData: svcState.formData }));
+  } catch (e) { /* storage unavailable — safe to ignore */ }
+}
+
+function populateFormFields(formData) {
+  const form = document.getElementById("dynamicForm");
+  Object.entries(formData || {}).forEach(([k, v]) => {
+    const field = form.elements[k];
+    if (field) field.value = v;
+  });
+}
+
+// Shows whatever has already been uploaded for this request — matters
+// most right after a resume, so the person can see what actually made
+// it through before the picker/reload interrupted them.
+async function refreshUploadedDocsPreview() {
+  const preview = document.getElementById("filePreview");
+  preview.innerHTML = `<span class="help-text">Loading attached documents…</span>`;
+  const { data } = await supabase.from("uploaded_documents").select("file_name").eq("service_request_id", svcState.requestId).order("uploaded_at", { ascending: true });
+  if (!data || data.length === 0) { preview.innerHTML = ""; return; }
+  preview.innerHTML = data.map(d => `<div class="file-chip"><i class="fas fa-check-circle" style="color:var(--status-completed);"></i> ${d.file_name}</div>`).join("");
+}
+
+async function loadServicePage(key) {
+  svcState = { service: null, price: 0, formData: {}, key };
+  document.getElementById("serviceBack").onclick = () => { window.__lastFilePickerOpen = 0; navigate("dashboard"); };
+
+  const { data: service, error } = await supabase.from("services").select("*, service_prices(price, currency)").eq("service_key", key).single();
+  if (error || !service) { toast("Service not found.", "error"); navigate("dashboard"); return; }
+
+  svcState.service = service;
+  svcState.price = service.service_prices?.price ?? 0;
+
+  document.getElementById("svcName").textContent = service.name;
+  document.getElementById("svcIcon").innerHTML = `<i class="fas ${service.icon}"></i>`;
+  document.getElementById("svcProcessingTime").textContent = "Processing time: " + service.processing_time;
+  document.getElementById("svcDescription").textContent = service.description;
+  document.getElementById("svcFee").textContent = formatMoney(svcState.price);
+
+  const wallet = await getWallet(currentUser.id);
+  svcState.balance = Number(wallet.balance);
+  const balEl = document.getElementById("svcWalletBalance");
+  const noteEl = document.getElementById("svcBalanceNote");
+  balEl.textContent = formatMoney(svcState.balance);
+  if (svcState.balance < svcState.price) {
+    balEl.style.color = "var(--status-failed)";
+    noteEl.textContent = "Insufficient — top up before submitting";
+    noteEl.style.color = "var(--status-failed)";
+  } else {
+    balEl.style.color = "var(--status-completed)";
+    noteEl.textContent = "Sufficient for this service";
+    noteEl.style.color = "var(--status-completed)";
+  }
+
+  const reqList = document.getElementById("svcRequirements");
+  reqList.innerHTML = (service.requirements || []).map(r => `<li><i class="fas fa-check-circle"></i> ${r}</li>`).join("");
+
+  renderFormFields();
+  document.getElementById("filePreview").innerHTML = "";
+
+  // Two kinds of "come back here" state to check, most important first:
+  //
+  // 1. A request that was ALREADY submitted and paid for, just waiting
+  //    on documents — this takes priority, since real money already
+  //    moved. We never re-run payment for this; we just resume the
+  //    upload step against the same request.
+  // 2. Typed answers that were never submitted yet — safe to just
+  //    restore the form and let the person continue to Review.
+  let handled = false;
+
+  try {
+    const pending = sessionStorage.getItem(pendingDocsKey(key));
+    if (pending) {
+      const parsed = JSON.parse(pending);
+      if (parsed && parsed.requestId) {
+        svcState.requestId = parsed.requestId;
+        svcState.requestRef = parsed.reference;
+        document.getElementById("docsRequestNote").textContent =
+          `Request ${parsed.reference} was already submitted and paid for — attach any supporting documents below (optional, you can also add these later).`;
+        showStep("docs");
+        await refreshUploadedDocsPreview();
+        toast("Resumed — your request is already submitted. Just finish attaching documents.");
+        handled = true;
+      }
+    }
+  } catch (e) { /* ignore corrupt/unavailable storage */ }
+
+  if (!handled) {
+    try {
+      const saved = sessionStorage.getItem(progressKey(key));
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.formData) {
+          svcState.formData = parsed.formData;
+          populateFormFields(parsed.formData);
+          renderReview();
+          showStep("review");
+          toast("Resumed your progress — review and submit when ready.");
+          handled = true;
+        }
+      }
+    } catch (e) { /* ignore corrupt/unavailable storage */ }
+  }
+
+  if (!handled) showStep("form");
+}
+
+document.getElementById("toStep2").onclick = () => {
+  const form = document.getElementById("dynamicForm");
+  if (!form.reportValidity()) return;
+  svcState.formData = collectFormData();
+  saveProgress();
+  renderReview();
+  showStep("review");
+};
+document.getElementById("backToStep1").onclick = () => showStep("form");
+document.getElementById("successBackBtn").onclick = () => navigate("dashboard");
+document.getElementById("finishDocsBtn").onclick = () => {
+  try { sessionStorage.removeItem(pendingDocsKey(svcState.key)); } catch (e) { /* ignore */ }
+  window.__lastFilePickerOpen = 0;
+  navigate("dashboard");
+};
+
+const fileDrop = document.getElementById("fileDrop");
+const fileInput = document.getElementById("fileInput");
+fileDrop.onclick = () => { window.__lastFilePickerOpen = Date.now(); fileInput.click(); };
+fileDrop.ondragover = (e) => { e.preventDefault(); fileDrop.classList.add("drag"); };
+fileDrop.ondragleave = () => fileDrop.classList.remove("drag");
+fileDrop.ondrop = (e) => { e.preventDefault(); fileDrop.classList.remove("drag"); const f = e.dataTransfer.files[0]; if (f) uploadOneFile(f); };
+fileInput.onchange = () => {
+  const file = fileInput.files[0];
+  fileInput.value = ""; // reset so re-selecting the same file still fires change next time
+  if (file) uploadOneFile(file);
+};
+
+async function uploadDocument(requestId, file) {
+  const path = `${currentUser.id}/${requestId}/${Date.now()}-${file.name}`;
+  const { error: uploadError } = await supabase.storage.from(APP_CONFIG.STORAGE_BUCKET).upload(path, file);
+  if (uploadError) throw uploadError;
+  const { error: dbError } = await supabase.from("uploaded_documents").insert({ service_request_id: requestId, user_id: currentUser.id, file_path: path, file_name: file.name, file_type: file.type });
+  if (dbError) throw dbError;
+}
+
+// Each file is uploaded and saved the moment it's picked — not staged
+// and sent all together at the end. So if the picker/reload trips up
+// on the SECOND file, the first one is already safely saved server-side
+// and won't need re-attaching.
+async function uploadOneFile(file) {
+  const preview = document.getElementById("filePreview");
+  const chip = document.createElement("div");
+  chip.className = "file-chip";
+  chip.innerHTML = `<span class="spinner" style="border-top-color:#092e42; border-color:rgba(9,46,66,0.2);"></span> Uploading ${file.name}…`;
+  preview.appendChild(chip);
+  try {
+    await uploadDocument(svcState.requestId, file);
+    chip.innerHTML = `<i class="fas fa-check-circle" style="color:var(--status-completed);"></i> ${file.name}`;
+  } catch (err) {
+    chip.innerHTML = `<i class="fas fa-exclamation-circle" style="color:var(--status-failed);"></i> ${file.name} — failed, tap to retry`;
+    chip.style.cursor = "pointer";
+    chip.onclick = () => { chip.remove(); uploadOneFile(file); };
+  }
+}
+
+async function forwardToProvider(requestId) {
+  const { data: { session } } = await supabase.auth.getSession();
+  try {
+    const res = await fetch(`${APP_CONFIG.SUPABASE_URL}/functions/v1/${svcState.key}`, {
+      method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify({ request_id: requestId })
+    });
+    return await res.json();
+  } catch (e) { return { forwarded: false, reason: e.message }; }
+}
+
+function showInsufficientBalance() {
+  document.getElementById("insufficientMsg").textContent =
+    `This service costs ${formatMoney(svcState.price)}, but your wallet balance is ${formatMoney(svcState.balance)}. Please deposit to continue.`;
+  document.getElementById("insufficientModal").classList.remove("hidden");
+}
+document.getElementById("cancelInsufficient").onclick = () => document.getElementById("insufficientModal").classList.add("hidden");
+document.getElementById("depositNowBtn").onclick = () => {
+  document.getElementById("insufficientModal").classList.add("hidden");
+  navigate("wallet");
+};
+
+document.getElementById("submitRequestBtn").onclick = async () => {
+  const btn = document.getElementById("submitRequestBtn");
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Submitting…';
+  try {
+    // Atomic, server-side check-and-deduct — the wallet balance is the
+    // single source of truth, checked and debited in one transaction
+    // (see submit_service_request() in the SQL) so two submissions
+    // can't both slip through on the same balance.
+    const { data, error } = await supabase.rpc("submit_service_request", {
+      p_service_id: svcState.service.id,
+      p_form_data: svcState.formData
+    });
+
+    if (error) {
+      if ((error.message || "").includes("INSUFFICIENT_BALANCE")) {
+        showInsufficientBalance();
+        return;
+      }
+      throw error;
+    }
+
+    const request = Array.isArray(data) ? data[0] : data;
+    svcState.requestId = request.id;
+    svcState.requestRef = request.reference;
+
+    // Payment is done and the request row exists in the database now —
+    // nothing below this point can lose that. Document upload is a
+    // separate, retry-friendly step from here on.
+    try {
+      sessionStorage.removeItem(progressKey(svcState.key));
+      sessionStorage.setItem(pendingDocsKey(svcState.key), JSON.stringify({ requestId: request.id, reference: request.reference }));
+    } catch (e) { /* ignore */ }
+
+    forwardToProvider(request.id);
+
+    document.getElementById("docsRequestNote").textContent =
+      `Request ${request.reference} submitted and paid — attach any supporting documents below (optional, you can also add these later).`;
+    document.getElementById("filePreview").innerHTML = "";
+    showStep("docs");
+    toast("Request submitted! Now attach your documents.", "success");
+  } catch (err) {
+    toast(err.message || "Something went wrong.", "error");
+  } finally {
+    btn.disabled = false; btn.innerHTML = "Submit Request";
+  }
+};
+
+/* ---------------------------- admin ---------------------------- */
+let currentAdmin = null; // { id, role, full_name, email }
+
+async function gateAdmin() {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) { navigate("admin-login"); return false; }
+  const { data, error } = await supabase.from("admin_users").select("id, role, full_name").eq("id", session.user.id).maybeSingle();
+  if (error || !data) { navigate("admin-login"); return false; }
+  currentAdmin = { ...data, email: session.user.email };
+  document.getElementById("adminUsersTab").classList.toggle("hidden", currentAdmin.role !== "super_admin");
+  return true;
+}
+
+// Best-effort activity trail — call after any meaningful admin write.
+async function logAdminAction(action, target, details = {}) {
+  try {
+    await supabase.from("audit_log").insert({
+      actor_email: currentAdmin?.email || "unknown",
+      action, target, details
+    });
+  } catch (e) { /* logging must never block the actual action */ }
+}
+
+document.getElementById("adminLoginForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const errorEl = document.getElementById("adminError");
+  errorEl.classList.add("hidden");
+  const email = document.getElementById("adminEmail").value.trim();
+  const password = document.getElementById("adminPassword").value;
+  const btn = document.getElementById("adminLoginBtn");
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Verifying…';
+
+  const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+  if (signInError) { btn.disabled = false; btn.innerHTML = "Enter Admin Panel"; errorEl.textContent = "Invalid credentials."; errorEl.classList.remove("hidden"); return; }
+
+  const { data: adminRow, error: adminError } = await supabase.from("admin_users").select("id, role").eq("id", signInData.user.id).maybeSingle();
+  btn.disabled = false; btn.innerHTML = "Enter Admin Panel";
+  if (adminError || !adminRow) { await supabase.auth.signOut(); errorEl.textContent = "This account is not authorized for admin access."; errorEl.classList.remove("hidden"); return; }
+
+  navigate("admin"); router();
+});
+
+document.getElementById("adminLogout").onclick = async () => { await supabase.auth.signOut(); navigate(""); router(); };
+
+let adminStatusFilter = "All";
+
+async function loadAdminStats() {
+  const [{ count: userCount }, { count: reqCount }, { count: pending }, { count: processing }, { count: completed }, { count: failed }, { data: revenueRows }, { data: walletRows }] = await Promise.all([
+    supabase.from("users").select("id", { count: "exact", head: true }),
+    supabase.from("service_requests").select("id", { count: "exact", head: true }),
+    supabase.from("service_requests").select("id", { count: "exact", head: true }).eq("status", "Pending"),
+    supabase.from("service_requests").select("id", { count: "exact", head: true }).eq("status", "Processing"),
+    supabase.from("service_requests").select("id", { count: "exact", head: true }).eq("status", "Completed"),
+    supabase.from("service_requests").select("id", { count: "exact", head: true }).eq("status", "Failed"),
+    supabase.from("payments").select("amount").eq("status", "success"),
+    supabase.from("wallets").select("balance")
+  ]);
+  const revenue = (revenueRows || []).reduce((s, r) => s + Number(r.amount), 0);
+  const walletTotal = (walletRows || []).reduce((s, r) => s + Number(r.balance), 0);
+  document.getElementById("statUsers").textContent = userCount ?? 0;
+  document.getElementById("statRequests").textContent = reqCount ?? 0;
+  document.getElementById("statPending").textContent = pending ?? 0;
+  document.getElementById("statProcessing").textContent = processing ?? 0;
+  document.getElementById("statCompleted").textContent = completed ?? 0;
+  document.getElementById("statFailed").textContent = failed ?? 0;
+  document.getElementById("statRevenue").textContent = formatMoney(revenue);
+  document.getElementById("statWallets").textContent = formatMoney(walletTotal);
+}
+
+async function loadAdminRequests() {
+  let query = supabase.from("service_requests").select("id, reference, amount, status, admin_notes, created_at, form_data, users(full_name, email), services(name, icon)").order("created_at", { ascending: false }).limit(100);
+  if (adminStatusFilter !== "All") query = query.eq("status", adminStatusFilter);
+  const { data, error } = await query;
+  const container = document.getElementById("adminRequestList");
+  if (error || !data || data.length === 0) { container.innerHTML = `<div class="empty-state"><i class="fas fa-inbox"></i>No requests found</div>`; return; }
+  container.innerHTML = data.map(r => `
+    <div class="req-list-item" data-id="${r.id}" style="cursor:pointer;">
+      <div><div class="req-name">${r.services?.name || "Service"}</div><div class="req-ref">${r.reference} • ${r.users?.full_name || "Unknown"} • ${new Date(r.created_at).toLocaleDateString()}</div></div>
+      <div style="text-align:right;"><div class="req-amount">${formatMoney(r.amount)}</div>${statusBadge(r.status)}</div>
+    </div>`).join("");
+  container.querySelectorAll(".req-list-item").forEach(el => el.onclick = () => openRequestDetail(el.dataset.id));
+}
+
+async function openRequestDetail(requestId) {
+  const modal = document.getElementById("requestModal");
+  const body = document.getElementById("requestDetailBody");
+  modal.classList.remove("hidden");
+  body.innerHTML = `<div class="empty-state">Loading…</div>`;
+
+  const [{ data: request }, { data: docs }] = await Promise.all([
+    supabase.from("service_requests").select("*, users(full_name, email, phone), services(name)").eq("id", requestId).single(),
+    supabase.from("uploaded_documents").select("*").eq("service_request_id", requestId)
+  ]);
+  if (!request) { body.innerHTML = `<p>Request not found.</p>`; return; }
+
+  const docLinks = await Promise.all((docs || []).map(async d => {
+    const { data } = await supabase.storage.from(APP_CONFIG.STORAGE_BUCKET).createSignedUrl(d.file_path, 3600);
+    return { name: d.file_name, url: data?.signedUrl };
+  }));
+
+  const formEntries = Object.entries(request.form_data || {}).map(([k, v]) => `<tr><td style="padding:4px 0; color:#888;">${k.replace(/_/g, " ")}</td><td style="padding:4px 0; text-align:right; font
